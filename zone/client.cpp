@@ -321,6 +321,7 @@ Client::Client(EQStreamInterface *ieqs) : Mob(
 	PendingGuildInvitation = false;
 
 	InitializeBuffSlots();
+	GetAllowedBotClasses();
 
 	adventure_request_timer = nullptr;
 	adventure_create_timer = nullptr;
@@ -508,6 +509,21 @@ Client::~Client() {
 	UninitializeBuffSlots();
 }
 
+int Client::GetAllowedBotClasses(){
+	return classes_allowed;
+}
+
+void Client::LoadAllowedBotClasses(){
+	std::string query = StringFormat("SELECT classes_allowed FROM bot_unlocks WHERE player_name = %d", client->GetCleanName());
+    auto results = database.QueryDatabase(query);
+
+	if (!results.Success() || results.RowCount() == 0) {
+        this->classes_allowed = 0; // No unlocked classes
+    }
+
+	auto row = results.begin();
+    this->classes_allowed = atoi(row[0]); // Store the bitmask in the client object
+}
 void Client::SendZoneInPackets()
 {
 

@@ -1841,6 +1841,8 @@ public:
 	void DeleteAccountBucket(std::string bucket_name);
 	std::string GetAccountBucketExpires(std::string bucket_name);
 	std::string GetAccountBucketRemaining(std::string bucket_name);
+	int GetAllowedBotClasses();
+	int LoadAllowedBotClasses();
 
 protected:
 	friend class Mob;
@@ -2002,6 +2004,7 @@ private:
 
 	uint16 m_door_tool_entity_id;
 	uint16 m_object_tool_entity_id;
+	int classes_allowed; // Bitmask of allowed bot classes
 
 
 public:

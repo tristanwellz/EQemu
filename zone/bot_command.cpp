@@ -1605,9 +1605,26 @@ void helper_bot_appearance_form_update(Bot *my_bot)
 uint32 helper_bot_create(Client *bot_owner, std::string bot_name, uint8 bot_class, uint16 bot_race, uint8 bot_gender)
 {
 	uint32 bot_id = 0;
+	int class_bit = (1 << (bot_class - 1)); // Convert class ID to bitmask
+
 	if (!bot_owner) {
 		return bot_id;
 	}
+
+	if(owner->GetAllowedBotClasses()) {
+		int owner_class_bit = (1 << (owner->GetAllowedBotClasses() - 1));
+		if (!(owner_class_bit & class_bit)) {
+    		bot_owner->Message(
+				Chat::White,
+				fmt::format(
+					"You cannot create a bot of type '{}'",
+					GetClassIDName(bot_class),
+				).c_str()
+			);
+			return bot_id;
+		}
+	}
+
 
 	if (!Bot::IsValidName(bot_name)) {
 		bot_owner->Message(

@@ -249,6 +249,7 @@ void bot_command_create(Client *c, const Seperator *sep)
 		"MAG", "ENC", "BST", "BER"
 	};
 
+
 	const std::string race_substrs[17] = {
 		"",
 		"HUM", "BAR", "ERU", "ELF",
