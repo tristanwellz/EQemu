@@ -76,10 +76,10 @@
 #include "web_interface.h"
 #include "console.h"
 #include "dynamic_zone_manager.h"
-#include "expedition_database.h"
 
 #include "world_server_cli.h"
 #include "../common/content/world_content_service.h"
+#include "../common/repositories/character_expedition_lockouts_repository.h"
 #include "../common/repositories/character_task_timers_repository.h"
 #include "../common/zone_store.h"
 #include "world_event_scheduler.h"
@@ -376,7 +376,9 @@ int main(int argc, char **argv)
 	);
 
 	Timer player_event_process_timer(1000);
-	player_event_logs.SetDatabase(&database)->Init();
+	if (player_event_logs.LoadDatabaseConnection()) {
+		player_event_logs.Init();
+	}
 
 	auto loop_fn = [&](EQ::Timer* t) {
 		Timer::SetCurrentTime();
@@ -441,13 +443,13 @@ int main(int argc, char **argv)
 		}
 
 		if (player_event_process_timer.Check()) {
-			player_event_logs.Process();
+			std::jthread event_thread(&PlayerEventLogs::Process, &player_event_logs);
 		}
 
 		if (PurgeInstanceTimer.Check()) {
 			database.PurgeExpiredInstances();
 			database.PurgeAllDeletedDataBuckets();
-			ExpeditionDatabase::PurgeExpiredCharacterLockouts();
+			CharacterExpeditionLockoutsRepository::DeleteWhere(database, "expire_time <= NOW()");
 			CharacterTaskTimersRepository::DeleteWhere(database, "expire_time <= NOW()");
 		}
 

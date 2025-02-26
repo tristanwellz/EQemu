@@ -93,7 +93,6 @@ struct ZoneEXPModInfo {
 };
 
 class Client;
-class Expedition;
 class Map;
 class Mob;
 class WaterMap;
@@ -155,6 +154,7 @@ public:
 	bool Process();
 	bool SaveZoneCFG();
 	bool DoesAlternateCurrencyExist(uint32 currency_id);
+	void DisableRespawnTimers();
 
 	char *adv_data;
 
@@ -236,10 +236,11 @@ public:
 	std::vector<GridEntriesRepository::GridEntries> zone_grid_entries;
 
 	std::unordered_map<uint32, std::unique_ptr<DynamicZone>> dynamic_zone_cache;
-	std::unordered_map<uint32, std::unique_ptr<Expedition>>  expedition_cache;
 	std::unordered_map<uint32, DynamicZoneTemplatesRepository::DynamicZoneTemplates> dz_template_cache;
 
 	std::unordered_map<uint32, EXPModifier> exp_modifiers;
+
+	std::vector<uint32> discovered_items;
 
 	time_t weather_timer;
 	Timer  spawn2_timer;
@@ -310,7 +311,6 @@ public:
 	void LoadVeteranRewards();
 	void LoadZoneDoors();
 	void ReloadStaticData();
-	void ReloadWorld(uint8 global_repop);
 	void RemoveAuth(const char *iCharName, const char *iLSKey);
 	void RemoveAuth(uint32 lsid);
 	void Repop(bool is_forced = false);
@@ -451,6 +451,14 @@ public:
 	void LoadBaseData();
 	void ReloadBaseData();
 
+	// data buckets
+	std::string GetBucket(const std::string& bucket_name);
+	void SetBucket(const std::string& bucket_name, const std::string& bucket_value, const std::string& expiration = "");
+	void DeleteBucket(const std::string& bucket_name);
+	std::string GetBucketExpires(const std::string& bucket_name);
+	std::string GetBucketRemaining(const std::string& bucket_name);
+	inline void SetZoneServerId(uint32 id) { m_zone_server_id = id; }
+	inline uint32 GetZoneServerId() const { return m_zone_server_id; }
 
 private:
 	bool      allow_mercs;
@@ -515,6 +523,8 @@ private:
 
 	// Base Data
 	std::vector<BaseDataRepository::BaseData> m_base_data = { };
+
+	uint32_t m_zone_server_id = 0;
 };
 
 #endif

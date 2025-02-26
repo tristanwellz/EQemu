@@ -8,6 +8,7 @@
 #include "worldserver.h"
 
 extern WorldServer worldserver;
+extern QueryServ* QServ;
 
 void Client::DoEvolveItemToggle(const EQApplicationPacket *app)
 {
@@ -258,6 +259,12 @@ bool Client::DoEvolveCheckProgression(const EQ::ItemInstance &inst)
 	}
 
 	std::unique_ptr<EQ::ItemInstance> const new_inst(database.CreateItem(new_item_id));
+
+	if (!new_inst) {
+		return false;
+	}
+
+	CheckItemDiscoverability(new_inst->GetID());
 
 	PlayerEvent::EvolveItem e{};
 

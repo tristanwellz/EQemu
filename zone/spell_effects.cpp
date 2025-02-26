@@ -1480,6 +1480,14 @@ bool Mob::SpellEffect(Mob* caster, uint16 spell_id, float partial, int level_ove
 #ifdef SPELL_EFFECT_SPAM
 				snprintf(effect_desc, _EDLEN, "Illusion: race %d", effect_value);
 #endif
+				if (caster && caster->IsOfClientBot()) {
+					Mob* target = IsClient() ? static_cast<Mob*>(CastToClient()) : static_cast<Mob*>(CastToBot());
+
+					if (target && target->GetIllusionBlock()) {
+						break;
+					}
+				}
+
 				ApplySpellEffectIllusion(spell_id, caster, buffslot, spells[spell_id].base_value[i], spells[spell_id].limit_value[i], spells[spell_id].max_value[i]);
 				break;
 			}
@@ -1489,6 +1497,14 @@ bool Mob::SpellEffect(Mob* caster, uint16 spell_id, float partial, int level_ove
 #ifdef SPELL_EFFECT_SPAM
 				snprintf(effect_desc, _EDLEN, "Illusion Copy");
 #endif
+				if (caster && caster->IsOfClientBot()) {
+					Mob* target = IsClient() ? static_cast<Mob*>(CastToClient()) : static_cast<Mob*>(CastToBot());
+
+					if (target && target->GetIllusionBlock()) {
+						break;
+					}
+				}
+
 				if(caster && caster->GetTarget()){
 						SendIllusionPacket
 						(
@@ -4324,9 +4340,14 @@ void Mob::BuffFadeBySlot(int slot, bool iRecalcBonuses)
 			case SE_IllusionCopy:
 			case SE_Illusion:
 			{
-				SendIllusionPacket(AppearanceStruct{});
-				// The GetSize below works because the above setting race to zero sets size back.
-				SendAppearancePacket(AppearanceType::Size, GetSize());
+				SendIllusionPacket(
+					AppearanceStruct{
+						.gender_id = GetBaseGender(),
+						.race_id = GetBaseRace(),
+						.size = GetDefaultRaceSize(GetBaseRace(), GetBaseGender()),
+						.texture = 0
+					}
+				);
 
 				for (int x = EQ::textures::textureBegin; x <= EQ::textures::LastTintableTexture; x++) {
 					SendWearChange(x);
@@ -10657,7 +10678,7 @@ int Mob::GetBuffStatValueBySlot(uint8 slot, const char* stat_identifier)
 
 	if (id == "caster_level") { return buffs[slot].casterlevel; }
 	else if (id == "spell_id") { return buffs[slot].spellid; }
-	else if (id == "caster_id") { return buffs[slot].spellid;; }
+	else if (id == "caster_id") { return buffs[slot].spellid; }
 	else if (id == "ticsremaining") { return buffs[slot].ticsremaining; }
 	else if (id == "counters") { return buffs[slot].counters; }
 	else if (id == "hit_number") { return  buffs[slot].hit_number; }

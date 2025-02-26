@@ -9,6 +9,8 @@ class Lua_Mob;
 class Lua_NPC;
 class Lua_Client;
 struct Lua_NPC_Loot_List;
+class Lua_Inventory;
+class Lua_Spawn;
 
 namespace luabind {
 	struct scope;
@@ -186,6 +188,16 @@ public:
 	void SetNPCAggro(bool in_npc_aggro);
 	uint32 GetNPCSpellsEffectsID();
 	void DescribeSpecialAbilities(Lua_Client c);
+	bool IsMultiQuestEnabled();
+	void MultiQuestEnable();
+	bool LuaCheckHandin(
+		Lua_Client c,
+		luabind::adl::object handin_table,
+		luabind::adl::object required_table,
+		luabind::adl::object items_table
+	);
+	void ReturnHandinItems(Lua_Client c);
+	Lua_Spawn GetSpawn(lua_State* L);
 };
 
 #endif

@@ -21,8 +21,7 @@
 class Client;
 class EQApplicationPacket;
 class DynamicZone;
-class Expedition;
-class ExpeditionLockoutTimer;
+class DzLockout;
 class ExpeditionRequest;
 class Group;
 class NPC;
@@ -32,6 +31,7 @@ class Seperator;
 class ServerPacket;
 struct DynamicZoneLocation;
 enum WaterRegionType : int;
+enum class DynamicZoneMemberStatus;
 
 namespace EQ
 {
@@ -73,6 +73,8 @@ namespace EQ
 #include "../common/guild_base.h"
 #include "../common/repositories/buyer_buy_lines_repository.h"
 #include "../common/repositories/character_evolving_items_repository.h"
+
+#include "bot_structs.h"
 
 #ifdef _WINDOWS
 	// since windows defines these within windef.h (which windows.h include)
@@ -197,6 +199,19 @@ struct RespawnOption
 	float heading;
 };
 
+struct BotCommandHelpParams {
+    std::vector<std::string> description       = {};
+    std::vector<std::string> notes             = {};
+    std::vector<std::string> example_format    = {};
+    std::vector<std::string> examples_one      = {};
+    std::vector<std::string> examples_two      = {};
+    std::vector<std::string> examples_three    = {};
+    std::vector<std::string> actionables       = {};
+    std::vector<std::string> options           = {};
+    std::vector<std::string> options_one       = {};
+    std::vector<std::string> options_two       = {};
+    std::vector<std::string> options_three     = {};
+};
 
 // do not ask what all these mean because I have no idea!
 // named from the client's CEverQuest::GetInnateDesc, they're missing some
@@ -233,6 +248,13 @@ struct ClientReward
 	uint32 amount;
 };
 
+struct ExpeditionInvite
+{
+	uint32_t    dz_id;
+	std::string inviter_name;
+	std::string swap_name;
+};
+
 class Client : public Mob
 {
 public:
@@ -240,6 +262,7 @@ public:
 	#include "client_packet.h"
 
 	Client(EQStreamInterface * ieqs);
+	Client(); // mocking / testing
 	~Client();
 
 	void ReconnectUCS();
@@ -863,11 +886,9 @@ public:
 	void QuestReadBook(const char* text, uint8 type);
 	void SendMoneyUpdate();
 	bool TakeMoneyFromPP(uint64 copper, bool update_client = false);
-	bool TakeMoneyFromPPWithOverFlow(uint64 copper, bool update_client);
 	bool TakePlatinum(uint32 platinum, bool update_client = false);
 	void AddMoneyToPP(uint64 copper, bool update_client = false);
 	void AddMoneyToPP(uint32 copper, uint32 silver, uint32 gold, uint32 platinum, bool update_client = false);
-	void AddMoneyToPPWithOverflow(uint64 copper, bool update_client);
 	void AddPlatinum(uint32 platinu, bool update_client = false);
 	bool HasMoney(uint64 copper);
 	uint64 GetCarriedMoney();
@@ -1086,7 +1107,6 @@ public:
 
 	// Item methods
 	void UseAugmentContainer(int container_slot);
-	void EVENT_ITEM_ScriptStopReturn();
 	uint32 NukeItem(uint32 itemnum, uint8 where_to_check =
 			(invWhereWorn | invWherePersonal | invWhereBank | invWhereSharedBank | invWhereTrading | invWhereCursor));
 	void SetTint(int16 slot_id, uint32 color);
@@ -1109,7 +1129,6 @@ public:
 	void RemoveItemBySerialNumber(uint32 serial_number, uint32 quantity = 1);
 	bool SwapItem(MoveItem_Struct* move_in);
 	void SwapItemResync(MoveItem_Struct* move_slots);
-	void QSSwapItemAuditor(MoveItem_Struct* move_in, bool postaction_call = false);
 	void PutLootInInventory(int16 slot_id, const EQ::ItemInstance &inst, LootItem** bag_item_data = 0);
 	bool AutoPutLootInInventory(EQ::ItemInstance& inst, bool try_worn = false, bool try_cursor = true, LootItem** bag_item_data = 0);
 	bool SummonItem(uint32 item_id, int16 charges = -1, uint32 aug1 = 0, uint32 aug2 = 0, uint32 aug3 = 0, uint32 aug4 = 0, uint32 aug5 = 0, uint32 aug6 = 0, bool attuned = false, uint16 to_slot = EQ::invslot::slotCursor, uint32 ornament_icon = 0, uint32 ornament_idfile = 0, uint32 ornament_hero_model = 0);
@@ -1118,7 +1137,6 @@ public:
 	void SetStats(uint8 type,int16 set_val);
 	void IncStats(uint8 type,int16 increase_val);
 	void DropItem(int16 slot_id, bool recurse = true);
-	void DropItemQS(EQ::ItemInstance* inst, bool pickup);
 	bool HasItemOnCorpse(uint32 item_id);
 
 	bool IsAugmentRestricted(uint8 item_type, uint32 augment_restriction);
@@ -1264,7 +1282,36 @@ public:
 	PendingTranslocate_Struct PendingTranslocateData;
 	void SendOPTranslocateConfirm(Mob *Caster, uint16 SpellID);
 
+	// Help Window
+	std::string SendBotCommandHelpWindow(const BotCommandHelpParams& params);
+	std::string GetCommandHelpHeader(std::string msg, std::string color);
+	std::string SplitCommandHelpText(std::vector<std::string> msg, std::string color, uint16 max_length, std::string secondary_color = "");
+	void SendSpellTypePrompts(bool commanded_types = false, bool client_only_types = false);
+
 	// Task System Methods
+	inline void LoadClientSharedCompletedTasks()
+	{
+		std::string query = fmt::format(R"(
+			SELECT
+			cst.task_id
+			FROM completed_shared_task_members cstm
+			JOIN completed_shared_tasks cst ON cstm.shared_task_id = cst.id
+			WHERE cstm.character_id = {}
+			GROUP BY cst.task_id;
+		)", CharacterID());
+
+		auto results = database.QueryDatabase(query);
+		if (!results.Success()) {
+			return;
+		}
+
+		m_completed_shared_tasks.clear();
+
+		for (auto row = results.begin(); row != results.end(); ++row) {
+			m_completed_shared_tasks.push_back(std::stoi(row[0]));
+		}
+	};
+	inline std::vector<uint32_t> GetCompletedSharedTasks() const { return m_completed_shared_tasks; };
 	void LoadClientTaskState();
 	void RemoveClientTaskState();
 	void SendTaskActivityComplete(int task_id, int activity_id, int task_index, TaskType task_type, int task_incomplete=1);
@@ -1435,7 +1482,10 @@ public:
 	{
 		return (task_state ? task_state->EnabledTaskCount(task_set_id) : -1);
 	}
-	inline bool IsTaskCompleted(int task_id) { return (task_state ? task_state->IsTaskCompleted(task_id) : false); }
+	inline bool IsTaskCompleted(int task_id)
+	{
+		return (task_state ? task_state->IsTaskCompleted(task_id, this) : false);
+	}
 	inline bool AreTasksCompleted(std::vector<int> task_ids)
 	{
 		return (task_state ? task_state->AreTasksCompleted(task_ids) : false);
@@ -1548,32 +1598,24 @@ public:
 		Client* client, const std::string& client_name, uint16_t chat_type,
 		uint32_t string_id, const std::initializer_list<std::string>& arguments = {});
 
-	void AddExpeditionLockout(const ExpeditionLockoutTimer& lockout, bool update_db = false);
-	void AddExpeditionLockoutDuration(const std::string& expedition_name,
-		const std::string& event_Name, int seconds, const std::string& uuid = {}, bool update_db = false);
-	void AddNewExpeditionLockout(const std::string& expedition_name,
-		const std::string& event_name, uint32_t duration, std::string uuid = {});
-	Expedition* CreateExpedition(DynamicZone& dz, bool disable_messages = false);
-	Expedition* CreateExpedition(const std::string& zone_name,
-		uint32 version, uint32 duration, const std::string& expedition_name,
-		uint32 min_players, uint32 max_players, bool disable_messages = false);
-	Expedition* CreateExpeditionFromTemplate(uint32_t dz_template_id);
-	Expedition* GetExpedition() const;
-	uint32 GetExpeditionID() const { return m_expedition_id; }
-	const ExpeditionLockoutTimer* GetExpeditionLockout(
-		const std::string& expedition_name, const std::string& event_name, bool include_expired = false) const;
-	const std::vector<ExpeditionLockoutTimer>& GetExpeditionLockouts() const { return m_expedition_lockouts; };
-	std::vector<ExpeditionLockoutTimer> GetExpeditionLockouts(const std::string& expedition_name, bool include_expired = false);
-	uint32 GetPendingExpeditionInviteID() const { return m_pending_expedition_invite.expedition_id; }
-	bool HasExpeditionLockout(const std::string& expedition_name, const std::string& event_name, bool include_expired = false);
-	bool IsInExpedition() const { return m_expedition_id != 0; }
-	void RemoveAllExpeditionLockouts(const std::string& expedition_name, bool update_db = false);
-	void RemoveExpeditionLockout(const std::string& expedition_name,
-		const std::string& event_name, bool update_db = false);
-	void RequestPendingExpeditionInvite();
-	void SendExpeditionLockoutTimers();
-	void SetExpeditionID(uint32 expedition_id) { m_expedition_id = expedition_id; };
-	void SetPendingExpeditionInvite(ExpeditionInvite&& invite) { m_pending_expedition_invite = invite; }
+	void AddDzLockout(const DzLockout& lockout, bool update_db = false);
+	void AddDzLockout(const std::string& expedition, const std::string& event, uint32_t duration, std::string uuid = {});
+	void AddDzLockoutDuration(const DzLockout& lockout, int seconds, const std::string& uuid = {}, bool update_db = false);
+	DynamicZone* CreateExpedition(DynamicZone& dz, bool silent = false);
+	DynamicZone* CreateExpedition(uint32 zone_id, uint32 version, uint32 duration, const std::string& name, uint32 min_players, uint32 max_players, bool silent = false);
+	DynamicZone* CreateExpeditionFromTemplate(uint32_t dz_template_id);
+	DynamicZone* GetExpedition() const;
+	uint32 GetExpeditionID() const;
+	const DzLockout* GetDzLockout(const std::string& expedition, const std::string& event) const;
+	const std::vector<DzLockout>& GetDzLockouts() const { return m_dz_lockouts; };
+	std::vector<DzLockout> GetDzLockouts(const std::string& expedition);
+	uint32 GetPendingDzInviteID() const { return m_dz_invite.dz_id; }
+	void SetPendingDzInvite(const ExpeditionInvite& invite) { m_dz_invite = invite; }
+	void RequestPendingDzInvite() const;
+	bool HasDzLockout(const std::string& expedition, const std::string& event) const;
+	void RemoveDzLockouts(const std::string& expedition, bool update_db = false);
+	void RemoveDzLockout(const std::string& expedition, const std::string& event, bool update_db = false);
+	void SendDzLockoutTimers();
 	void DzListTimers();
 	void SetDzRemovalTimer(bool enable_timer);
 	void SendDzCompassUpdate();
@@ -1809,7 +1851,34 @@ public:
 
 	uint32 trapid; //ID of trap player has triggered. This is cleared when the player leaves the trap's radius, or it despawns.
 
+	void SendMerchantEnd();
+
+	void CheckItemDiscoverability(uint32 item_id);
+
 	Raid *p_raid_instance;
+
+	inline uint32 GetPotionBeltItemIcon(uint8 slot_id)
+	{
+		return EQ::ValueWithin(
+			slot_id,
+			0,
+			EQ::profile::POTION_BELT_SIZE - 1
+		) ? m_pp.potionbelt.Items[slot_id].Icon : 0;
+	};
+
+	inline uint32 GetPotionBeltItemID(uint8 slot_id)
+	{
+		return EQ::ValueWithin(slot_id, 0, EQ::profile::POTION_BELT_SIZE - 1) ? m_pp.potionbelt.Items[slot_id].ID : 0;
+	};
+
+	inline std::string GetPotionBeltItemName(uint8 slot_id)
+	{
+		return EQ::ValueWithin(
+			slot_id,
+			0,
+			EQ::profile::POTION_BELT_SIZE - 1
+		) ? m_pp.potionbelt.Items[slot_id].Name : 0;
+	};
 
 	void ShowDevToolsMenu();
 	CheatManager cheat_manager;
@@ -1844,6 +1913,29 @@ public:
 	int GetAllowedBotClasses();
 	int GetAllowedBotNumber();
 	void LoadAllowedBotClasses();
+
+	std::string GetBandolierName(uint8 bandolier_slot);
+	uint32 GetBandolierItemIcon(uint8 bandolier_slot, uint8 slot_id);
+	uint32 GetBandolierItemID(uint8 bandolier_slot, uint8 slot_id);
+	std::string GetBandolierItemName(uint8 bandolier_slot, uint8 slot_id);
+
+	// External handin tracking
+	// this is used to prevent things like quest::givecash and AddMoneyToPP
+	// from double giving money back to players in scripts when return_items
+	// also gives money back to players
+	struct ExternalHandinMoneyReturned {
+		uint64 copper;
+		uint64 silver;
+		uint64 gold;
+		uint64 platinum;
+		std::string return_source;
+	};
+private:
+	ExternalHandinMoneyReturned m_external_handin_money_returned = {};
+	std::vector<uint32_t>       m_external_handin_items_returned = {};
+public:
+	ExternalHandinMoneyReturned GetExternalHandinMoneyReturned() { return m_external_handin_money_returned; }
+	std::vector<uint32_t> GetExternalHandinItemsReturned() { return m_external_handin_items_returned; }
 
 protected:
 	friend class Mob;
@@ -2063,6 +2155,7 @@ private:
 	PTimerList p_timers; //persistent timers
 	Timer hpupdate_timer;
 	Timer camp_timer;
+	Timer bot_camp_timer;
 	Timer process_timer;
 	Timer consume_food_timer;
 	Timer zoneinpacket_timer;
@@ -2221,12 +2314,13 @@ private:
 
 	uint8 client_max_level;
 
-	uint32 m_expedition_id = 0;
-	ExpeditionInvite m_pending_expedition_invite { 0 };
-	std::vector<ExpeditionLockoutTimer> m_expedition_lockouts;
+	ExpeditionInvite m_dz_invite = {};
+	std::vector<DzLockout> m_dz_lockouts;
 	glm::vec3 m_quest_compass;
 	bool m_has_quest_compass = false;
 	std::vector<uint32_t> m_dynamic_zone_ids;
+
+	std::vector<uint32_t> m_completed_shared_tasks;
 
 public:
 	enum BotOwnerOption : size_t {
@@ -2247,6 +2341,8 @@ public:
 
 	bool GetBotPulling() { return m_bot_pulling; }
 	void SetBotPulling(bool flag = true) { m_bot_pulling = flag; }
+	uint32 GetAssistee() { return bot_assistee; }
+	void SetAssistee(uint32 id = 0) { bot_assistee = id; }
 
 	bool GetBotPrecombat() { return m_bot_precombat; }
 	void SetBotPrecombat(bool flag = true) { m_bot_precombat = flag; }
@@ -2261,15 +2357,37 @@ public:
 	void CampAllBots(uint8 class_id = Class::None);
 	void SpawnRaidBotsOnConnect(Raid* raid);
 
+	void LoadDefaultBotSettings();
+	int GetDefaultBotSettings(uint8 setting_type, uint16 bot_setting);
+	int GetBotSetting(uint8 setting_type, uint16 bot_setting);
+	void SetBotSetting(uint8 setting_type, uint16 bot_setting, uint32 setting_value);
+
+	uint16 GetDefaultSpellTypeDelay(uint16 spell_type);
+	uint8 GetDefaultSpellTypeMinThreshold(uint16 spell_type);
+	uint8 GetDefaultSpellTypeMaxThreshold(uint16 spell_type);
+	inline uint16 GetSpellTypeDelay(uint16 spell_type) const { return m_bot_spell_settings[spell_type].delay; }
+	inline void SetSpellTypeDelay(uint16 spell_type, uint16 delay_value) { m_bot_spell_settings[spell_type].delay = delay_value; }
+	inline uint8 GetSpellTypeMinThreshold(uint16 spell_type) const { return m_bot_spell_settings[spell_type].min_threshold; }
+	inline void SetSpellTypeMinThreshold(uint16 spell_type, uint8 threshold_value) { m_bot_spell_settings[spell_type].min_threshold = threshold_value; }
+	inline uint8 GetSpellTypeMaxThreshold(uint16 spell_type) const { return m_bot_spell_settings[spell_type].max_threshold; }
+	inline void SetSpellTypeMaxThreshold(uint16 spell_type, uint8 threshold_value) { m_bot_spell_settings[spell_type].max_threshold = threshold_value; }
+	inline bool SpellTypeRecastCheck(uint16 spellType) { return !m_bot_spell_settings[spellType].recast_timer.GetRemainingTime(); }
+	void SetSpellTypeRecastTimer(uint16 spell_type, uint32 recast_time) { m_bot_spell_settings[spell_type].recast_timer.Start(recast_time); }
+
+	void SetIllusionBlock(bool value) { _illusion_block = value; }
+	bool GetIllusionBlock() const override { return _illusion_block; }
+
 private:
 	bool bot_owner_options[_booCount];
 	bool m_bot_pulling;
 	bool m_bot_precombat;
+	uint32 bot_assistee;
+	std::vector<BotSpellSettings> m_bot_spell_settings;
+	bool _illusion_block;
 
 	bool CanTradeFVNoDropItem();
 	void SendMobPositions();
 	void PlayerTradeEventLog(Trade *t, Trade *t2);
-	void NPCHandinEventLog(Trade* t, NPC* n);
 
 	// full and partial mail key cache
 	std::string m_mail_key_full;

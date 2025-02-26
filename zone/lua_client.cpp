@@ -1944,12 +1944,12 @@ Lua_Expedition Lua_Client::CreateExpedition(luabind::object expedition_table) {
 
 Lua_Expedition Lua_Client::CreateExpedition(std::string zone_name, uint32 version, uint32 duration, std::string expedition_name, uint32 min_players, uint32 max_players) {
 	Lua_Safe_Call_Class(Lua_Expedition);
-	return self->CreateExpedition(zone_name, version, duration, expedition_name, min_players, max_players);
+	return self->CreateExpedition(ZoneID(zone_name), version, duration, expedition_name, min_players, max_players);
 }
 
 Lua_Expedition Lua_Client::CreateExpedition(std::string zone_name, uint32 version, uint32 duration, std::string expedition_name, uint32 min_players, uint32 max_players, bool disable_messages) {
 	Lua_Safe_Call_Class(Lua_Expedition);
-	return self->CreateExpedition(zone_name, version, duration, expedition_name, min_players, max_players, disable_messages);
+	return self->CreateExpedition(ZoneID(zone_name), version, duration, expedition_name, min_players, max_players, disable_messages);
 }
 
 Lua_Expedition Lua_Client::CreateExpeditionFromTemplate(uint32_t dz_template_id) {
@@ -1968,16 +1968,15 @@ luabind::object Lua_Client::GetExpeditionLockouts(lua_State* L)
 	if (d_)
 	{
 		auto self = reinterpret_cast<NativeType*>(d_);
-		auto lockouts = self->GetExpeditionLockouts();
-
+		const auto& lockouts = self->GetDzLockouts();
 		for (const auto& lockout : lockouts)
 		{
-			auto lockout_table = lua_table[lockout.GetExpeditionName()];
+			auto lockout_table = lua_table[lockout.DzName()];
 			if (luabind::type(lockout_table) != LUA_TTABLE)
 			{
 				lockout_table = luabind::newtable(L);
 			}
-			lockout_table[lockout.GetEventName()] = lockout.GetSecondsRemaining();
+			lockout_table[lockout.Event()] = lockout.GetSecondsRemaining();
 		}
 	}
 	return lua_table;
@@ -1989,13 +1988,12 @@ luabind::object Lua_Client::GetExpeditionLockouts(lua_State* L, std::string expe
 	if (d_)
 	{
 		auto self = reinterpret_cast<NativeType*>(d_);
-		auto lockouts = self->GetExpeditionLockouts();
-
+		const auto& lockouts = self->GetDzLockouts();
 		for (const auto& lockout : lockouts)
 		{
-			if (lockout.GetExpeditionName() == expedition_name)
+			if (lockout.DzName() == expedition_name)
 			{
-				lua_table[lockout.GetEventName()] = lockout.GetSecondsRemaining();
+				lua_table[lockout.Event()] = lockout.GetSecondsRemaining();
 			}
 		}
 	}
@@ -2005,52 +2003,54 @@ luabind::object Lua_Client::GetExpeditionLockouts(lua_State* L, std::string expe
 std::string Lua_Client::GetLockoutExpeditionUUID(std::string expedition_name, std::string event_name) {
 	Lua_Safe_Call_String();
 	std::string uuid;
-	auto lockout = self->GetExpeditionLockout(expedition_name, event_name);
+	auto lockout = self->GetDzLockout(expedition_name, event_name);
 	if (lockout)
 	{
-		uuid = lockout->GetExpeditionUUID();
+		uuid = lockout->UUID();
 	}
 	return uuid;
 }
 
 void Lua_Client::AddExpeditionLockout(std::string expedition_name, std::string event_name, uint32 seconds) {
 	Lua_Safe_Call_Void();
-	self->AddNewExpeditionLockout(expedition_name, event_name, seconds);
+	self->AddDzLockout(expedition_name, event_name, seconds);
 }
 
 void Lua_Client::AddExpeditionLockout(std::string expedition_name, std::string event_name, uint32 seconds, std::string uuid) {
 	Lua_Safe_Call_Void();
-	self->AddNewExpeditionLockout(expedition_name, event_name, seconds, uuid);
+	self->AddDzLockout(expedition_name, event_name, seconds, uuid);
 }
 
 void Lua_Client::AddExpeditionLockoutDuration(std::string expedition_name, std::string event_name, int seconds) {
 	Lua_Safe_Call_Void();
-	self->AddExpeditionLockoutDuration(expedition_name, event_name, seconds, {}, true);
+	auto lockout = DzLockout::Create(expedition_name, event_name, seconds);
+	self->AddDzLockoutDuration(lockout, seconds, {}, true);
 }
 
 void Lua_Client::AddExpeditionLockoutDuration(std::string expedition_name, std::string event_name, int seconds, std::string uuid) {
 	Lua_Safe_Call_Void();
-	self->AddExpeditionLockoutDuration(expedition_name, event_name, seconds, uuid, true);
+	auto lockout = DzLockout::Create(expedition_name, event_name, seconds, uuid);
+	self->AddDzLockoutDuration(lockout, seconds, uuid, true);
 }
 
 void Lua_Client::RemoveAllExpeditionLockouts() {
 	Lua_Safe_Call_Void();
-	self->RemoveAllExpeditionLockouts({}, true);
+	self->RemoveDzLockouts({}, true);
 }
 
 void Lua_Client::RemoveAllExpeditionLockouts(std::string expedition_name) {
 	Lua_Safe_Call_Void();
-	self->RemoveAllExpeditionLockouts(expedition_name, true);
+	self->RemoveDzLockouts(expedition_name, true);
 }
 
 void Lua_Client::RemoveExpeditionLockout(std::string expedition_name, std::string event_name) {
 	Lua_Safe_Call_Void();
-	self->RemoveExpeditionLockout(expedition_name, event_name, true);
+	self->RemoveDzLockout(expedition_name, event_name, true);
 }
 
 bool Lua_Client::HasExpeditionLockout(std::string expedition_name, std::string event_name) {
 	Lua_Safe_Call_Bool();
-	return self->HasExpeditionLockout(expedition_name, event_name);
+	return self->HasDzLockout(expedition_name, event_name);
 }
 
 void Lua_Client::MovePCDynamicZone(uint32 zone_id) {
@@ -3506,6 +3506,48 @@ std::string Lua_Client::GetAccountBucketRemaining(std::string bucket_name)
 	return self->GetAccountBucketRemaining(bucket_name);
 }
 
+std::string Lua_Client::GetBandolierName(uint8 bandolier_slot)
+{
+	Lua_Safe_Call_String();
+	return self->GetBandolierName(bandolier_slot);
+}
+
+uint32 Lua_Client::GetBandolierItemIcon(uint8 bandolier_slot, uint8 slot_id)
+{
+	Lua_Safe_Call_Int();
+	return self->GetBandolierItemIcon(bandolier_slot, slot_id);
+}
+
+uint32 Lua_Client::GetBandolierItemID(uint8 bandolier_slot, uint8 slot_id)
+{
+	Lua_Safe_Call_Int();
+	return self->GetBandolierItemID(bandolier_slot, slot_id);
+}
+
+std::string Lua_Client::GetBandolierItemName(uint8 bandolier_slot, uint8 slot_id)
+{
+	Lua_Safe_Call_String();
+	return self->GetBandolierItemName(bandolier_slot, slot_id);
+}
+
+uint32 Lua_Client::GetPotionBeltItemIcon(uint8 slot_id)
+{
+	Lua_Safe_Call_Int();
+	return self->GetPotionBeltItemIcon(slot_id);
+}
+
+uint32 Lua_Client::GetPotionBeltItemID(uint8 slot_id)
+{
+	Lua_Safe_Call_Int();
+	return self->GetPotionBeltItemID(slot_id);
+}
+
+std::string Lua_Client::GetPotionBeltItemName(uint8 slot_id)
+{
+	Lua_Safe_Call_String();
+	return self->GetPotionBeltItemName(slot_id);
+}
+
 luabind::scope lua_register_client() {
 	return luabind::class_<Lua_Client, Lua_Mob>("Client")
 	.def(luabind::constructor<>())
@@ -3650,6 +3692,10 @@ luabind::scope lua_register_client() {
 	.def("GetAugmentIDAt", (int(Lua_Client::*)(int,int))&Lua_Client::GetAugmentIDAt)
 	.def("GetAugmentIDsBySlotID", (luabind::object(Lua_Client::*)(lua_State* L,int16))&Lua_Client::GetAugmentIDsBySlotID)
 	.def("GetAutoLoginCharacterName", (std::string(Lua_Client::*)(void))&Lua_Client::GetAutoLoginCharacterName)
+	.def("GetBandolierItemIcon", (uint32(Lua_Client::*)(uint8,uint8))&Lua_Client::GetBandolierItemIcon)
+	.def("GetBandolierItemID", (uint32(Lua_Client::*)(uint8,uint8))&Lua_Client::GetBandolierItemID)
+	.def("GetBandolierItemName", (std::string(Lua_Client::*)(uint8,uint8))&Lua_Client::GetBandolierItemName)
+	.def("GetBandolierName", (std::string(Lua_Client::*)(uint8))&Lua_Client::GetBandolierName)
 	.def("GetBaseAGI", (int(Lua_Client::*)(void))&Lua_Client::GetBaseAGI)
 	.def("GetBaseCHA", (int(Lua_Client::*)(void))&Lua_Client::GetBaseCHA)
 	.def("GetBaseDEX", (int(Lua_Client::*)(void))&Lua_Client::GetBaseDEX)
@@ -3748,6 +3794,9 @@ luabind::scope lua_register_client() {
 	.def("GetNextAvailableDisciplineSlot", (int(Lua_Client::*)(void))&Lua_Client::GetNextAvailableDisciplineSlot)
 	.def("GetNextAvailableSpellBookSlot", (int(Lua_Client::*)(int))&Lua_Client::GetNextAvailableSpellBookSlot)
 	.def("GetNextAvailableSpellBookSlot", (int(Lua_Client::*)(void))&Lua_Client::GetNextAvailableSpellBookSlot)
+	.def("GetPotionBeltItemIcon", (uint32(Lua_Client::*)(uint8))&Lua_Client::GetPotionBeltItemIcon)
+	.def("GetPotionBeltItemID", (uint32(Lua_Client::*)(uint8))&Lua_Client::GetPotionBeltItemID)
+	.def("GetPotionBeltItemName", (std::string(Lua_Client::*)(uint8))&Lua_Client::GetPotionBeltItemName)
 	.def("GetPVP", (bool(Lua_Client::*)(void))&Lua_Client::GetPVP)
 	.def("GetPVPPoints", (uint32(Lua_Client::*)(void))&Lua_Client::GetPVPPoints)
 	.def("GetRaceBitmask", (uint16(Lua_Client::*)(void))&Lua_Client::GetRaceBitmask)
