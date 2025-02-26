@@ -2839,7 +2839,7 @@ bool QuestManager::createBot(const char *name, const char *lastname, uint8 level
 			initiator->Message(
 				Chat::White,
 				fmt::format(
-					"The questMgr name {} is already being used or is invalid. Please choose a different name.",
+					"The name {} is already being used or is invalid. Please choose a different name.",
 					test_name
 				).c_str()
 			);
