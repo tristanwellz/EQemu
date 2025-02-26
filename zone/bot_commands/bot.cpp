@@ -241,6 +241,9 @@ void bot_command_clone(Client *c, const Seperator *sep)
 
 void bot_command_create(Client *c, const Seperator *sep)
 {
+	c->LoadAllowedBotClasses();
+	const int playersUnlockedBit = c->GetAllowedBotClasses();
+
 	const std::string class_substrs[17] = {
 		"",
 		"WAR", "CLR", "PAL", "RNG",
@@ -248,6 +251,7 @@ void bot_command_create(Client *c, const Seperator *sep)
 		"ROG", "SHM", "NEC", "WIZ",
 		"MAG", "ENC", "BST", "BER"
 	};
+
 
 	const std::string race_substrs[17] = {
 		"",
@@ -289,7 +293,8 @@ void bot_command_create(Client *c, const Seperator *sep)
 
 		window_text.append(
 			fmt::format(
-				"Classes{}<c \"#FFFF\">",
+				"Classes {}{}<c \"#FFFF\">",
+				playersUnlockedBit,
 				DialogueWindow::Break()
 			)
 		);
@@ -303,16 +308,19 @@ void bot_command_create(Client *c, const Seperator *sep)
 				window_text.append(DialogueWindow::Break());
 				object_count = 0;
 			}
-
-			window_text.append(
-				fmt::format("{} ({})",
-							class_substrs[i + 1],
-							(i + 1)
-				)
-			);
-
-			++object_count;
-			message_separator = ", ";
+			
+			if (playersUnlockedBit & (1 << i)) {
+				window_text.append(
+					fmt::format("{} ({})({})",
+								class_substrs[i + 1],
+								(i + 1),
+								(1 << i)
+					)
+				);
+			
+				++object_count;
+				message_separator = ", ";
+			}
 		}
 
 		window_text.append(DialogueWindow::Break(2));
@@ -883,8 +891,8 @@ void bot_command_spawn(Client *c, const Seperator *sep)
 	if (!Bot::CheckSpawnConditions(c)) {
 		return;
 	}
-
-	auto bot_spawn_limit = c->GetBotSpawnLimit();
+	c->LoadAllowedBotClasses();
+	auto bot_spawn_limit = c->GetAllowedBotNumber();
 	auto spawned_bot_count = Bot::SpawnedBotCount(c->CharacterID());
 
 	if (
