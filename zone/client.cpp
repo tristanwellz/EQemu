@@ -321,7 +321,9 @@ Client::Client(EQStreamInterface *ieqs) : Mob(
 	PendingGuildInvitation = false;
 
 	InitializeBuffSlots();
-	GetAllowedBotClasses();
+	classes_allowed = 0;
+	number_of_bots_allowed = 0;
+	// LoadAllowedBotClasses();
 
 	adventure_request_timer = nullptr;
 	adventure_create_timer = nullptr;
@@ -512,18 +514,28 @@ Client::~Client() {
 int Client::GetAllowedBotClasses(){
 	return classes_allowed;
 }
+int Client::GetAllowedBotNumber(){
+	return number_of_bots_allowed;
+}
 
 void Client::LoadAllowedBotClasses(){
-	std::string query = StringFormat("SELECT classes_allowed FROM bot_unlocks WHERE player_name = %d", client->GetCleanName());
-    auto results = database.QueryDatabase(query);
-
+	std::string query = StringFormat("SELECT classes_allowed,number_of_bots FROM bot_unlocks WHERE player_name = '%s'", GetCleanName());
+    
+	Log(Logs::General, Logs::Debug, "Executing LoadAllowedBotClasses query: %s", query.c_str());
+    
+	auto results = database.QueryDatabase(query);
+	
 	if (!results.Success() || results.RowCount() == 0) {
-        this->classes_allowed = 0; // No unlocked classes
+        classes_allowed = 0; // No unlocked classes
+		number_of_bots_allowed = 0;
+		return;
     }
 
 	auto row = results.begin();
-    this->classes_allowed = atoi(row[0]); // Store the bitmask in the client object
+    classes_allowed = atoi(row[0]); // Store the bitmask in the client object
+	number_of_bots_allowed = atoi(row[1]); // Store number of bots allowed.
 }
+
 void Client::SendZoneInPackets()
 {
 

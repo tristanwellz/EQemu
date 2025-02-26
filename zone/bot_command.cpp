@@ -1610,15 +1610,17 @@ uint32 helper_bot_create(Client *bot_owner, std::string bot_name, uint8 bot_clas
 	if (!bot_owner) {
 		return bot_id;
 	}
+	bot_owner->LoadAllowedBotClasses();
 
-	if(owner->GetAllowedBotClasses()) {
-		int owner_class_bit = (1 << (owner->GetAllowedBotClasses() - 1));
+	if(bot_owner->GetAllowedBotClasses()) {
+		int owner_class_bit = bot_owner->GetAllowedBotClasses();
+		
 		if (!(owner_class_bit & class_bit)) {
     		bot_owner->Message(
 				Chat::White,
 				fmt::format(
 					"You cannot create a bot of type '{}'",
-					GetClassIDName(bot_class),
+					GetClassIDName(bot_class)
 				).c_str()
 			);
 			return bot_id;
@@ -1653,7 +1655,7 @@ uint32 helper_bot_create(Client *bot_owner, std::string bot_name, uint8 bot_clas
 		bot_owner->Message(
 			Chat::White,
 			fmt::format(
-				"The name '{}' is already being used. Please choose a different name",
+				"The bot name '{}' is already being used. Please choose a different name",
 				bot_name
 			).c_str()
 		);
