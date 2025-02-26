@@ -25,6 +25,7 @@ void bot_command_bot(Client *c, const Seperator *sep)
 	if (helper_command_alias_fail(c, "bot_command_bot", sep->arg[0], "bot"))
 		return;
 
+		
 	helper_send_available_subcommands(c, "bot", subcommand_list);
 }
 
